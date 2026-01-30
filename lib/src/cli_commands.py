@@ -86,6 +86,11 @@ except ImportError:
         run_command, run_sudo_command, OutputController, VerbosityLevel
     )
 
+try:
+    from .global_shortcuts import get_available_keyboards, test_key_accessibility
+except ImportError:
+    from global_shortcuts import get_available_keyboards, test_key_accessibility
+
 
 # Constants
 HYPRWHSPR_ROOT = os.environ.get('HYPRWHSPR_ROOT', '/usr/lib/hyprwhspr')
@@ -162,6 +167,7 @@ def _check_ydotool_version() -> tuple[bool, str, str]:
 
     hyprwhspr requires ydotool 1.0+ for paste injection. Ubuntu/Debian apt
     repositories contain an outdated 0.1.x version that uses incompatible syntax.
+    Arch-based distros (Arch, Manjaro, CachyOS) typically have 1.0+ in their repos.
 
     Returns:
         Tuple of (is_compatible, version_string, message)
@@ -175,25 +181,58 @@ def _check_ydotool_version() -> tuple[bool, str, str]:
     if not shutil.which('ydotool'):
         return False, "", "ydotool not found"
 
-    # Get version
+    # Get version - try dpkg first (ydotool 1.0+ has no --version flag)
+    import re
+    version = None
+
+    # Try dpkg (Debian/Ubuntu)
     try:
         result = subprocess.run(
-            ['ydotool', '--version'],
+            ['dpkg', '-l', 'ydotool'],
             capture_output=True,
             text=True,
             timeout=5
         )
-        version_output = result.stdout + result.stderr
+        match = re.search(r'ii\s+ydotool\s+(\d+\.\d+\.?\d*)', result.stdout)
+        if match:
+            version = match.group(1)
     except Exception:
-        version_output = ""
+        pass
 
-    # Parse version (ydotool 1.0+ outputs "ydotool version X.Y.Z")
-    import re
-    match = re.search(r'(\d+\.\d+\.?\d*)', version_output)
-    if match:
-        version = match.group(1)
-    else:
-        # Can't parse version - assume old version
+    # Try pacman (Arch/Manjaro/CachyOS)
+    if not version:
+        try:
+            result = subprocess.run(
+                ['pacman', '-Q', 'ydotool'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            # Output format: "ydotool 1.0.4-2.1"
+            match = re.search(r'ydotool\s+(\d+\.\d+\.?\d*)', result.stdout)
+            if match:
+                version = match.group(1)
+        except Exception:
+            pass
+
+    # Fallback: try --version (old ydotool 0.1.x supports this)
+    if not version:
+        try:
+            result = subprocess.run(
+                ['ydotool', '--version'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            version_output = result.stdout + result.stderr
+            match = re.search(r'(\d+\.\d+\.?\d*)', version_output)
+            if match:
+                version = match.group(1)
+        except Exception:
+            pass
+
+    # If still no version, assume old
+    if not version:
         version = "0.1.0"
 
     # Compare versions
@@ -3765,6 +3804,127 @@ def test_command(live: bool = False, mic_only: bool = False):
         log_error("Some tests failed")
 
     return all_passed
+
+
+# ==================== Keyboard Command ====================
+
+def keyboard_command(action: str):
+    """Handle keyboard subcommands"""
+    if action == 'list':
+        list_keyboards()
+    elif action == 'test':
+        test_keyboard_access()
+    else:
+        log_error(f"Unknown keyboard action: {action}")
+
+
+def list_keyboards():
+    """List available keyboard devices"""
+    log_info("Discovering available keyboard devices...")
+    
+    try:
+        # Get current config to show selected device
+        config = ConfigManager()
+        shortcut = config.get_setting("primary_shortcut", "Super+Alt+D")
+        selected_device_name = config.get_setting("selected_device_name", None)
+        selected_device_path = config.get_setting("selected_device_path", None)
+        
+        # Get available keyboards
+        keyboards = get_available_keyboards(shortcut)
+        
+        if not keyboards:
+            log_warning("No accessible keyboard devices found")
+            log_info("Make sure you're in the 'input' group: sudo usermod -aG input $USER")
+            return
+        
+        print("\nAvailable keyboard devices:")
+        print("-" * 70)
+        
+        # Find which device would actually be selected (matching GlobalShortcuts logic)
+        selected_device_index = None
+        if selected_device_name:
+            search_name_lower = selected_device_name.lower()
+            for i, kb in enumerate(keyboards):
+                kb_name_lower = kb['name'].lower()
+                # Match GlobalShortcuts logic: exact match OR partial match
+                if kb_name_lower == search_name_lower or search_name_lower in kb_name_lower:
+                    selected_device_index = i
+                    break  # Use first match, same as GlobalShortcuts
+        elif selected_device_path:
+            for i, kb in enumerate(keyboards):
+                if kb['path'] == selected_device_path:
+                    selected_device_index = i
+                    break
+        
+        for i, kb in enumerate(keyboards, 1):
+            # Mark only the device that would actually be selected
+            marker = " [SELECTED]" if (i - 1) == selected_device_index else ""
+            print(f"  {i}. {kb['name']}")
+            print(f"     Path: {kb['path']}{marker}")
+        
+        print("-" * 70)
+        print(f"\nTotal: {len(keyboards)} accessible device(s)")
+        
+        if selected_device_name:
+            print(f"\nCurrently selected by name: '{selected_device_name}'")
+        elif selected_device_path:
+            print(f"\nCurrently selected by path: {selected_device_path}")
+        else:
+            print("\nNo specific device selected - using auto-detection")
+        
+        print("\nTo select a device, add to your config (~/.config/hyprwhspr/config.json):")
+        print('  "selected_device_name": "Device Name"')
+        print('  or')
+        print('  "selected_device_path": "/dev/input/eventX"')
+        
+    except Exception as e:
+        log_error(f"Error listing keyboards: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def test_keyboard_access():
+    """Test keyboard device accessibility"""
+    log_info("Testing keyboard device accessibility...")
+    
+    try:
+        results = test_key_accessibility()
+        
+        print("\n" + "=" * 70)
+        print("Keyboard Device Accessibility Test")
+        print("=" * 70)
+        
+        print(f"\nTotal devices found: {results['total_devices']}")
+        print(f"Accessible devices: {len(results['accessible_devices'])}")
+        print(f"Inaccessible devices: {len(results['inaccessible_devices'])}")
+        
+        if results['accessible_devices']:
+            print("\n✓ Accessible devices:")
+            for dev in results['accessible_devices']:
+                print(f"  - {dev['name']}")
+                print(f"    Path: {dev['path']}")
+        
+        if results['inaccessible_devices']:
+            print("\n✗ Inaccessible devices:")
+            for dev in results['inaccessible_devices']:
+                print(f"  - {dev['name']}")
+                print(f"    Path: {dev['path']}")
+            print("\nNote: Inaccessible devices may be in use by another process")
+            print("      (e.g., Espanso, keyd, kmonad) or require permissions")
+        
+        if not results['accessible_devices']:
+            print("\n⚠ No accessible devices found!")
+            print("Solutions:")
+            print("  1. Add yourself to 'input' group: sudo usermod -aG input $USER")
+            print("     (then log out and back in)")
+            print("  2. Check if devices are grabbed by other tools:")
+            print("     sudo fuser /dev/input/event*")
+            print("  3. Consider using 'selected_device_name' in config to avoid conflicts")
+        
+    except Exception as e:
+        log_error(f"Error testing keyboard access: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 # ==================== Uninstall Command ====================

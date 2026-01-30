@@ -207,6 +207,7 @@ class hyprwhsprApp:
             recording_mode = self.config.get_setting("recording_mode", "toggle")
             grab_keys = self.config.get_setting("grab_keys", False)
             selected_device_path = self.config.get_setting("selected_device_path", None)
+            selected_device_name = self.config.get_setting("selected_device_name", None)
 
             # Register callbacks based on recording mode
             # Validate recording_mode and only register release callback for modes that need it
@@ -217,6 +218,7 @@ class hyprwhsprApp:
                     self._on_shortcut_triggered,
                     None,  # No release callback for toggle mode
                     device_path=selected_device_path,
+                    device_name=selected_device_name,
                     grab_keys=grab_keys,
                 )
             elif recording_mode in ('push_to_talk', 'auto'):
@@ -226,6 +228,7 @@ class hyprwhsprApp:
                     self._on_shortcut_triggered,
                     self._on_shortcut_released,
                     device_path=selected_device_path,
+                    device_name=selected_device_name,
                     grab_keys=grab_keys,
                 )
             elif recording_mode == 'long_form':
@@ -235,6 +238,7 @@ class hyprwhsprApp:
                     self._on_longform_shortcut_triggered,
                     None,  # No release callback for long_form mode
                     device_path=selected_device_path,
+                    device_name=selected_device_name,
                     grab_keys=grab_keys,
                 )
                 # Initialize segment manager for long-form mode
@@ -251,6 +255,7 @@ class hyprwhsprApp:
                     self._on_shortcut_triggered,
                     None,  # No release callback for invalid modes (treated as toggle)
                     device_path=selected_device_path,
+                    device_name=selected_device_name,
                     grab_keys=grab_keys,
                 )
         except Exception as e:
@@ -270,6 +275,7 @@ class hyprwhsprApp:
                             self._on_secondary_shortcut_triggered,
                             None,  # No release callback for toggle mode
                             device_path=selected_device_path,
+                            device_name=selected_device_name,
                             grab_keys=grab_keys,
                         )
                     elif recording_mode in ('push_to_talk', 'auto'):
@@ -278,6 +284,7 @@ class hyprwhsprApp:
                             self._on_secondary_shortcut_triggered,
                             self._on_secondary_shortcut_released,
                             device_path=selected_device_path,
+                            device_name=selected_device_name,
                             grab_keys=grab_keys,
                         )
                     else:
@@ -287,6 +294,7 @@ class hyprwhsprApp:
                             self._on_secondary_shortcut_triggered,
                             None,
                             device_path=selected_device_path,
+                            device_name=selected_device_name,
                             grab_keys=grab_keys,
                         )
                     
@@ -312,6 +320,7 @@ class hyprwhsprApp:
                         self._on_longform_submit_triggered,
                         None,  # No release callback
                         device_path=selected_device_path,
+                        device_name=selected_device_name,
                         grab_keys=grab_keys,
                     )
                     if self._longform_submit_shortcuts.start():
@@ -1007,7 +1016,7 @@ class hyprwhsprApp:
                 """Wait for callbacks and play sound if stream works"""
                 import time
                 start_time = time.monotonic()
-                while time.monotonic() - start_time < 0.5:  # Wait up to 500ms
+                while time.monotonic() - start_time < 1.5:  # Wait up to 1.5s
                     # Read frames_since_start with lock held to avoid data race
                     with self.audio_capture.lock:
                         frames_count = self.audio_capture.frames_since_start
@@ -1655,10 +1664,21 @@ class hyprwhsprApp:
                 
                 # Open FIFO for reading (blocks until writer appears)
                 with open(RECORDING_CONTROL_FILE, 'r') as f:
-                    action = f.read().strip().lower()
-                
-                if not action:
+                    raw_data = f.read()
+
+                # Handle multiple commands written to FIFO before read
+                # (e.g., user clicks rapidly during timeout - "start\nstart")
+                # Take only the last valid command (most recent intent)
+                valid_commands = {'start', 'stop', 'submit'}
+                lines = [line.strip().lower() for line in raw_data.splitlines() if line.strip()]
+                valid_lines = [line for line in lines if line in valid_commands]
+
+                if not valid_lines:
+                    if lines:
+                        print(f"[CONTROL] No valid commands in: {lines}", flush=True)
                     continue
+
+                action = valid_lines[-1]  # Take the last valid command
                 
                 # Check recording mode to route to appropriate handler
                 recording_mode = self.config.get_setting("recording_mode", "toggle")

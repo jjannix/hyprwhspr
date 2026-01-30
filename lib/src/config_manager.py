@@ -19,24 +19,27 @@ class ConfigManager:
     def __init__(self):
         # Default configuration values - minimal set for hyprwhspr
         self.default_config = {
-            "primary_shortcut": "SUPER+ALT+D",
-            "secondary_shortcut": None,  # Optional secondary hotkey for language-specific recording (e.g., "SUPER+ALT+I")
-            "secondary_language": None,  # Language code for secondary shortcut (e.g., "it", "en", "fr", etc.)
-            "recording_mode": "toggle",  # 'toggle' | 'push_to_talk' | 'auto' (hybrid tap/hold)
-            "grab_keys": False,  # Exclusive keyboard grab (false = safer, true = suppress shortcut from other apps)
-            "use_hypr_bindings": False,  # Use Hyprland compositor bindings instead of evdev (disables GlobalShortcuts)
+            'primary_shortcut': 'SUPER+ALT+D',
+            'secondary_shortcut': None,  # Optional secondary hotkey for language-specific recording (e.g., "SUPER+ALT+I")
+            'secondary_language': None,  # Language code for secondary shortcut (e.g., "it", "en", "fr", etc.)
+            'recording_mode': 'toggle',  # 'toggle' | 'push_to_talk' | 'auto' (hybrid tap/hold)
+            'grab_keys': False,     # Exclusive keyboard grab (false = safer, true = suppress shortcut from other apps)
+            'use_hypr_bindings': False,  # Use Hyprland compositor bindings instead of evdev (disables GlobalShortcuts)
+            'selected_device_path': None,  # Specific keyboard device path (e.g., '/dev/input/event3')
+            'selected_device_name': None,  # Specific keyboard device name (e.g., 'USB Keyboard') - takes priority over path if both set
             # Audio device persistence (for reliable device matching across reboots)
-            "audio_device_id": None,  # PortAudio device index (can change on reboot)
-            "audio_device_name": None,  # Human-readable device name (more stable)
-            "audio_device_vendor_id": None,  # USB vendor ID (most stable, from udev)
-            "audio_device_model_id": None,  # USB model ID (most stable, from udev)
-            "model": "base",
-            "threads": 4,  # Thread count for whisper processing
-            "language": None,  # Language code for transcription (None = auto-detect, or 'en', 'nl', 'fr', etc.)
-            "word_overrides": {},  # Dictionary of word replacements: {"original": "replacement"}
-            "whisper_prompt": "Transcribe with proper capitalization, including sentence beginnings, proper nouns, titles, and standard English capitalization rules.",
-            "clipboard_behavior": False,  # Boolean: true = clear clipboard after delay, false = keep (current behavior)
-            "clipboard_clear_delay": 5.0,  # Float: seconds to wait before clearing clipboard (only used if clipboard_behavior is true)
+            'audio_device_id': None,        # PortAudio device index (can change on reboot)
+            'audio_device_name': None,      # Human-readable device name (more stable)
+            'audio_device_vendor_id': None, # USB vendor ID (most stable, from udev)
+            'audio_device_model_id': None,  # USB model ID (most stable, from udev)
+            'model': 'base',
+            'threads': 4,           # Thread count for whisper processing
+            'language': None,       # Language code for transcription (None = auto-detect, or 'en', 'nl', 'fr', etc.)
+            'word_overrides': {},  # Dictionary of word replacements: {"original": "replacement"}
+            'symbol_replacements': True,  # Enable built-in speech-to-symbol replacements (e.g., "quote" → ")
+            'whisper_prompt': 'Transcribe with proper capitalization, including sentence beginnings, proper nouns, titles, and standard English capitalization rules.',
+            'clipboard_behavior': False,  # Boolean: true = clear clipboard after delay, false = keep (current behavior)
+            'clipboard_clear_delay': 5.0,  # Float: seconds to wait before clearing clipboard (only used if clipboard_behavior is true)
             # Values: "super" | "ctrl_shift" | "ctrl"
             # Default "ctrl_shift" for flexible unix-y primitive
             "paste_mode": "ctrl_shift",
